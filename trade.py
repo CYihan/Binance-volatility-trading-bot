@@ -5,8 +5,10 @@ import os
 from colorama import init
 init()
 
+from decimal import *
+
 # needed for the binance API and websockets
-from binance.client import Client
+from binance import Client
 
 # used for dates
 from datetime import datetime, timedelta
@@ -48,7 +50,7 @@ def get_price():
 
         if CUSTOM_LIST:
             if any(item + PAIR_WITH == coin['symbol'] for item in tickers) and all(item not in coin['symbol'] for item in FIATS):
-                initial_price[coin['symbol']] = { 'price': coin['price'], 'time': datetime.now()}
+                initial_price[coin['symbol']] = {'price': coin['price'], 'time': datetime.now()}
         else:
             if PAIR_WITH in coin['symbol'] and all(item not in coin['symbol'] for item in FIATS):
                 initial_price[coin['symbol']] = { 'price': coin['price'], 'time': datetime.now()}
@@ -84,7 +86,7 @@ def wait_for_price():
 
         # calculate the difference between the first and last price reads
         for coin in initial_price:
-            threshold_check = (float(last_price[coin]['price']) - float(initial_price[coin]['price'])) / float(initial_price[coin]['price']) * 100
+            threshold_check = (Decimal(last_price[coin]['price']) - Decimal(initial_price[coin]['price'])) / Decimal(initial_price[coin]['price']) * 100
 
             if threshold_check > infoChange:
                 infoChange = threshold_check
@@ -135,18 +137,18 @@ def convert_volume():
             pass
 
         # calculate the volume in coin from QUANTITY in USDT (default)
-        volume[coin] = float(QUANTITY / float(last_price[coin]['price']))
+        volume[coin] = Decimal(QUANTITY / Decimal(last_price[coin]['price']))
 
         # define the volume with the correct step size
         if coin not in lot_size:
-            volume[coin] = float('{:.1f}'.format(volume[coin]))
+            volume[coin] = Decimal('{:.1f}'.format(volume[coin]))
 
         else:
             # if lot size has 0 decimal points, make the volume an integer
             if lot_size[coin] == 0:
                 volume[coin] = int(volume[coin])
             else:
-                volume[coin] = float('{:.{}f}'.format(volume[coin], lot_size[coin]))
+                volume[coin] = Decimal('{:.{}f}'.format(volume[coin], lot_size[coin]))
 
     return volume, last_price
 
@@ -213,18 +215,18 @@ def sell_coins():
 
     for coin in list(coins_bought):
         # define stop loss and take profit
-        TP = float(coins_bought[coin]['bought_at']) + (float(coins_bought[coin]['bought_at']) * coins_bought[coin]['take_profit']) / 100
-        SL = float(coins_bought[coin]['bought_at']) + (float(coins_bought[coin]['bought_at']) * coins_bought[coin]['stop_loss']) / 100
+        TP = Decimal(coins_bought[coin]['bought_at']) + (Decimal(coins_bought[coin]['bought_at']) * coins_bought[coin]['take_profit']) / 100
+        SL = Decimal(coins_bought[coin]['bought_at']) + (Decimal(coins_bought[coin]['bought_at']) * coins_bought[coin]['stop_loss']) / 100
 
 
-        LastPrice = float(last_price[coin]['price'])
-        BuyPrice = float(coins_bought[coin]['bought_at'])
-        PriceChange = float((LastPrice - BuyPrice) / BuyPrice * 100)
+        LastPrice = Decimal(last_price[coin]['price'])
+        BuyPrice = Decimal(coins_bought[coin]['bought_at'])
+        PriceChange = Decimal((LastPrice - BuyPrice) / BuyPrice * 100)
 
         # check that the price is above the take profit and readjust SL and TP accordingly if trialing stop loss used
-        if float(last_price[coin]['price']) > TP and USE_TRAILING_STOP_LOSS:
+        if Decimal(last_price[coin]['price']) > TP and USE_TRAILING_STOP_LOSS:
             print("TP reached, adjusting TP and SL accordingly to lock-in profit")
-            
+
             # increasing TP by TRAILING_TAKE_PROFIT (essentially next time to readjust SL)
             coins_bought[coin]['take_profit'] += TRAILING_TAKE_PROFIT
             coins_bought[coin]['stop_loss'] = coins_bought[coin]['take_profit'] - TRAILING_STOP_LOSS
@@ -232,10 +234,10 @@ def sell_coins():
             continue
 
         # check that the price is below the stop loss or above take profit (if trailing stop loss not used) and sell if this is the case 
-        if float(last_price[coin]['price']) < SL or (float(last_price[coin]['price']) > TP and not USE_TRAILING_STOP_LOSS):
+        if Decimal(last_price[coin]['price']) < SL or (Decimal(last_price[coin]['price']) > TP and not USE_TRAILING_STOP_LOSS):
             print(f"{txcolors.SELL}TP or SL reached, selling {coins_bought[coin]['volume']} {coin} - {BuyPrice} - {LastPrice} : {PriceChange:.2f}%{txcolors.DEFAULT}")
 
-            if TESTNET :
+            if TESTNET:
                 # create test order before pushing an actual order
                 test_order = client.create_test_order(symbol=coin, side='SELL', type='MARKET', quantity=coins_bought[coin]['volume'])
 
@@ -311,7 +313,7 @@ def write_log(logline):
 if __name__ == '__main__':
     # Load arguments then parse settings
     args = parse_args()
-    
+
     DEFAULT_CONFIG_FILE = 'config.yml'
     DEFAULT_CREDS_FILE = 'creds.yml'
 
@@ -319,8 +321,8 @@ if __name__ == '__main__':
     creds_file = args.creds if args.creds else DEFAULT_CREDS_FILE
     parsed_config = load_config(config_file)
     parsed_creds = load_config(creds_file)
-    
-    
+
+
 
     # Default no debugging
     DEBUG = False
@@ -345,19 +347,19 @@ if __name__ == '__main__':
     USE_TRAILING_STOP_LOSS = parsed_config['trading_options']['USE_TRAILING_STOP_LOSS']
     TRAILING_STOP_LOSS = parsed_config['trading_options']['TRAILING_STOP_LOSS']
     TRAILING_TAKE_PROFIT = parsed_config['trading_options']['TRAILING_TAKE_PROFIT']
-    
+
     if DEBUG_SETTING or args.debug:
         DEBUG = True
 
     # Load creds for correct envionment
     # If testnet true in config.yml, load test keys
     access_key, secret_key = load_correct_creds(parsed_creds, TESTNET)
-    
-    if DEBUG: 
+
+    if DEBUG:
         print(f'loaded config below\n{json.dumps(parsed_config, indent=4)}')
         print(f'Your credentials have been loaded from {creds_file}')
-            
-    
+
+
     # Authenticate with the client
     if TESTNET:
         client = Client(access_key, secret_key)
@@ -397,4 +399,4 @@ if __name__ == '__main__':
         update_portfolio(orders, last_price, volume)
         coins_sold = sell_coins()
         remove_from_portfolio(coins_sold)
-        
+
